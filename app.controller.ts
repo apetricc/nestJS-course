@@ -16,10 +16,12 @@
 // we need to tell NestJS that this class will be a controller
 // and should have the ability to create endpoints
 // to do this, we will use a 'decorator'
-import { Controller, Get, Post, Put, Delete, Param, Body, HttpCode } from "@nestjs/common"
+import { Controller, Get, Post, Put, Delete, Param, Body, HttpCode, ParseIntPipe, ParseUUIDPipe, ParseEnumPipe } from "@nestjs/common"
 import { v4 as uuid } from "uuid";
 import { type } from "os";
 import { data, ReportType } from "src/data"
+import { CreateReportDto } from "src/dtos/report.dto" //aka "./dtos/report.dto"
+
 let myFunction = (a, b) => a / b;
 var hello = (val) => "Hello " + val;
 //trying to make a function for this bit of code DRY
@@ -48,13 +50,26 @@ let getReportType = (input: string): string => {
   // else return ReportType.EXPENSE;
 }
 
+/** ******************************************************* */
+
+
+import { AppService } from "./app.service";
 
 // and we use the decorator like we use spring annotations
 @Controller('report/:type')
 export class AppController {
+
+  // we can export the constructor..?
+  constructor(
+    private readonly appService: AppService
+  ){}
+
+
+
+
   // we use the Get() decorator above the method that will be a GET request
   @Get('')
-  getAllReports(@Param('type') type: string) {
+  getAllReports(@Param('type', new ParseEnumPipe(ReportType)) type: string) {
     // we need to know if it's an INCOME or an EXPENSE report, but how do we get the dynamic field ":type" inside our method??
     // we do that with "param decorators"  -- so we have to import it like our other deocorators 1st
     // then we have to pass the param inside the parens "()", AND declare the type like this: @Param('paramName') type: string
@@ -65,44 +80,54 @@ export class AppController {
     // const reportType = type === "income" ? ReportType.INCOME : ReportType.EXPENSE
     // return data.report.filter((report) => report.type === reportType);
     //my code:
-    return data.report.filter((report) => report.type === getReportType(type));
+    // return data.report.filter((report) => report.type === getReportType(type));
+    //using the appService we instatiated:
+    const reportType = type === "income" ? ReportType.INCOME : ReportType.EXPENSE;
+    return this.appService.getAllReports(reportType);
   }
   // next one a little tougher, we just have to extract the report type, AND the id, same way though
   @Get(':id')
-  getReportById(@Param('type') type: string, @Param('id') id: string) {
-    console.log({
-      'reportType': type,
-      'id': id
-    })
-    const reportType = type === "income" ? ReportType.INCOME : ReportType.EXPENSE
-    //find the report with a specific id
-    return data.report.filter((report) => report.type === reportType).find(report => report.id === id);
+  getReportById(
+    @Param('type', new ParseEnumPipe(ReportType)) type: string,
+    @Param('id', ParseUUIDPipe) id: string) {
+    console.log(id, typeof(id));
+    const reportType = type === "income" ? ReportType.INCOME : ReportType.EXPENSE;
+    //find the report with a specific id--original version:
+    //return data.report.filter((report) => report.type === reportType).find(report => report.id === id);
+    //did the appService version on my own :-O
+    return this.appService.getReportById(reportType, id);
   }
   //@1:13 of video
   // to do the Post method, we need use the body of the request, and to access this we need to use the
   // @Body decorator (and import it to our controller TS file)
   @Post()      // we could say to import the @Body as "body" and give the types, or destructure it as its elements as "{amount, source}"
-  createReport(@Body() { amount, source }: { amount: number; source: string; }, @Param('type') type: string) {
+  createReport(@Body() { amount, source }: CreateReportDto, @Param('type', new ParseEnumPipe(ReportType)) type: string) {
     // console.log({ body });
-    const newReport = {
-      id: uuid(),
-      // source: body.source
-      // or simplify to--> source: source
-      // or even simpler to:
-      source,
-      amount,
-      created_at: new Date(),
-      updated_at: new Date(),
-      //type we have to extract from the params using @Param decorator (at 1:18:35)
-      type: type === "income" ? ReportType.INCOME : ReportType.EXPENSE
-    }
-    data.report.push(newReport)
-    return newReport;
+
+    //the 'in controller version':
+    // const newReport = {
+    //   id: uuid(),
+    //   // source: body.source
+    //   // or simplify to--> source: source
+    //   // or even simpler to:
+    //   source,
+    //   amount,
+    //   created_at: new Date(),
+    //   updated_at: new Date(),
+    //   //type we have to extract from the params using @Param decorator (at 1:18:35)
+    //   type: type === "income" ? ReportType.INCOME : ReportType.EXPENSE
+    // }
+    // data.report.push(newReport)
+    // return newReport;
+
+    //abstracting to service class/entity: 
+    const reportType = type === "income" ? ReportType.INCOME : ReportType.EXPENSE;
+    return this.appService.createReport(reportType, {source, amount});
   }
 
 
   // @Put(":id")
-  myUpdateReport(@Body() { amount, source }: { amount: number, source: string; }, @Param('id') id: string, @Param('type') type: string) {
+  myUpdateReport(@Body() { amount, source }: { amount: number, source: string; }, @Param('id', ParseUUIDPipe) id: string, @Param('type', new ParseEnumPipe(ReportType)) type: string) {
     /** I get that there are these fields:
         id: string;
         source: string;
@@ -144,19 +169,19 @@ export class AppController {
   updateReport(
     // @Body() {amount, source}: {amount: number, source: string;},
     @Body() body: { amount: number; source: string },
-    @Param('id') id: string,
-    @Param('type') type: string) {
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('type', new ParseEnumPipe(ReportType)) type: string) {
     // 1st thing, we want to find if the report exists; if so contintue with logic, else don't continue
-    const reportType = type === "income" ? ReportType.INCOME : ReportType.EXPENSE
+    // const reportType = type === "income" ? ReportType.INCOME : ReportType.EXPENSE
     //find the report with a specific id in words: "looking at the data.report array of objects, FILTER the 'reports' WHERE
     // report.type is equal to 'reportType' (income/expense) THEN on that filtered list/array of objects, FIND the report object
     // WHERE report.id (the id element of the report object) is EQUAL to 'id' which is getting passed in by user... and assign to the const "report"
-    const reportToUpdate = data.report.filter((report) => report.type === reportType).find(report => report.id === id);
+    // const reportToUpdate = data.report.filter((report) => report.type === reportType).find(report => report.id === id);
     //if that report doesn't exist, return early and quit for now (we'll add error handling later)
-    if (!reportToUpdate) return;
+    // if (!reportToUpdate) return;
 
     // else we need to find where a specific thing lives inside the array, best way to do that is with the index!
-    const reportIndex = data.report.findIndex((report) => report.id === reportToUpdate.id);
+    // const reportIndex = data.report.findIndex((report) => report.id === reportToUpdate.id);
 
     // once we have the index, all we have to do is perform the update
     // so goto the index in the report array, destructure that object with the "..."
@@ -169,14 +194,27 @@ export class AppController {
     //   amount: body.amount,
     //   source: body.source
     // }
-    data.report[reportIndex] = {
-      ...data.report[reportIndex],
-      ...body
-    }
+    // data.report[reportIndex] = {
+    //   ...data.report[reportIndex],
+    //   ...body
+    // }
 
     // then we're going to return that new updated object
-    // return `Updated index ${reportIndex} ` + JSON.stringify(data.report[reportIndex]);
-    return data.report[reportIndex];
+    // return `Updated index ${reportIndex} ` + JSON.stringify(data.report[reportIndex]); 
+    //return data.report[reportIndex];
+
+    // whole function is this without comments: 
+    // const reportType = type === "income" ? ReportType.INCOME : ReportType.EXPENSE
+    // const reportToUpdate = data.report.filter((report) => report.type === reportType).find(report => report.id === id);
+    // if (!reportToUpdate) return;
+    // const reportIndex = data.report.findIndex((report) => report.id === reportToUpdate.id);
+    // data.report[reportIndex] = {
+    //   ...data.report[reportIndex],
+    //   ...body
+    // }
+    // return data.report[reportIndex];
+    const reportType = type === "income" ? ReportType.INCOME : ReportType.EXPENSE
+    return this.appService.updateReport(reportType, id, body);
   }
 
 
@@ -184,7 +222,7 @@ export class AppController {
 
 //my version of delete that works with /myDelete/ added to path! X^D
   @Delete('/myDelete/' + ':id')
-  myDeleteReport(@Param('id') id: string, @Param('type') type: string) {
+  myDeleteReport(@Param('id', ParseUUIDPipe) id: string, @Param('type') type: string) {
     const reportType = type === "income" ? ReportType.INCOME : ReportType.EXPENSE
     const reportToUpdate = data.report.filter((report) => report.type === reportType).find(report => report.id === id);
     //if that report doesn't exist, return early and quit for now (we'll add error handling later)
@@ -199,19 +237,23 @@ export class AppController {
   //Laith's version of delete:
   @HttpCode(204)
   @Delete(':id')
-  deleteReport(@Param('id') id: string, @Param('type') type: string)
+  deleteReport(@Param('id', ParseUUIDPipe) id: string)
+  // could've sworn he had type in there too-->  , @Param('type') type: string
+  // I just added for a print statement that is unreachable anyway... :-|
   {
-    const reportIndex = data.report.findIndex(report => report.id === id);
+    // //original version
+    // const reportIndex = data.report.findIndex(report => report.id === id);
 
-    if(reportIndex === -1) return;
-    // so if the reportIndex is NOT -1, then there is a matching report,
-    // and we could filter it out, or we can use the splice() method
-    // we can pass the params of the index where to start, and how many indexes to splice
-    data.report.splice(reportIndex, 1);
+    // if(reportIndex === -1) return;
+    // // so if the reportIndex is NOT -1, then there is a matching report,
+    // // and we could filter it out, or we can use the splice() method
+    // // we can pass the params of the index where to start, and how many indexes to splice
+    // data.report.splice(reportIndex, 1);
 
-    // I think the @HttpCode(204) may supercede this return message, it doesn't print, but the endpoint works!
-    return `deleted ${type} report with id: ${id}`;
-    //but we also want to return a new status code to 204--'no content' with decorator @HttpCode(204)
+    // // I think the @HttpCode(204) may supercede this return message, it doesn't print, but the endpoint works!
+    // return `deleted ${type} report with id: ${id}`;
+    // //but we also want to return a new status code to 204--'no content' with decorator @HttpCode(204)
+    return this.appService.deleteReport(id);
   }
 
 // now we have the logic for all our endpoints, but with a bunch of gaping flaws.  We will address those next
@@ -270,7 +312,10 @@ export class AppController {
  @ 50:11 of video
  To do this we need some kind of DB to store our values/reports
 
-
+@1:33---  we have all our endpoints and the logic;
+WE also have a few problems-- we have all our logic in the controller, which should really only be
+creating the endpoints, not bogged down by all this business logic;
+We also have no form of data validation so people could supply gargabe data;
 
   */
 
