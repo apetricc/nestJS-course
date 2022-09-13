@@ -1,0 +1,183 @@
+NEST JS ENTITIES:
+Contoller --> creating endpoints
+Modules --> managing dependencies/instatiation etc
+Services --> business logic
+guards -->
+data transfer objects -->
+
+// then we need to export this class (by saying "export" in front of the class declaration) b/c it will be used in the app.module.ts file
+// so we have to export it so it can access it obviously;
+// then we refresh our localhost:3000 and see that we should get back that empty array "[]" in our browser;
+// @29:09 of video;
+
+
+ *   so at this point the request we are making in our browser is a GET request to  http://localhost:3000/
+ *    our app sees the GET request and runs our function, returning whatever we tell it to
+ *   we want it to return the stuff when we go to http://localhost:3000/report/income
+ *   the controller simply goes to "/" by default, so we just need to append the additional path in the decorator;
+ *   we can put in the "@Controller()" decorator, or the "@Get()" decorator.  We'll put in the @Get so it is more specific(?)
+ *   it will look like this: @Get('report/income')
+ *  why to put it in the @Get instead of the @Controller?
+ * Whatever we put in the @Controller gets added to the base path.  So if we have @Controller('hi') & @Get('hello')
+ *  we would have to say localhost:3000/hi/hello to get to our GET request function
+ *   so if we want a path to be appended to everything in our controller, we put it in the @Controller() decorator,
+ *   if we want an endpoint for a certain method, we'd put it in the @Get() decorator for a specific method/function;
+ *
+ *--------------------------------
+  adding a dynamic ID to our path/decorator-->
+  we need to add an ID to one of our @Get() decorators so we have a path like this:
+  localhost:3000/report/income/asdfhhjj
+  we could say @Get('asdfhhjj')  and that would work, but we want it to be dynamic.
+  So what we do is we just put a colon in front and give that variable a name that makes sense, like ':id'
+  Then we can put anything in there and it will call this method
+
+  We can do the same thing in our 'base path' in the @Controller('report/:type')
+  SO then we should be able to make requests to both localhost:3000/report/income AND localhost:3000/report/expense...
+   or localhost:3000/report/ANYTHING?! But we will add error handling to fix that later, thankfully!
+ ----------------------
+
+ Now we want to also add the paths for POST, PUT, & DELETE.  They will need their own decorators, 3 guesses what those are.
+
+ Then we created a collection in Postman to test our app b/c we can only do GET requests from our browser & we need a tool
+ like postman to do the other operations. We created that collection, and have covered the basics of what our
+ controller classes will be doing (with this app and others). Our functions aren't really doing anything yet though...
+ SO--Next we will add the actual functionality to our app!!
+ @ 50:11 of video
+ To do this we need some kind of DB to store our values/reports
+
+@1:33---  we have all our endpoints and the logic;
+WE also have a few problems-- we have all our logic in the controller, which should really only be
+creating the endpoints, not bogged down by all this business logic;
+We also have no form of data validation so people could supply gargabe data;
+
+So to resolve our contoller having all the logic, we will move the logic to a 'service' file--
+app.service.ts in this case;
+
+@1.42 -- we need to instantiate our Service class, and use modules to manage that stuff in our directory!
+
+@1.46 -- at this point, it seems a little uneccesary to have the module and service etc, but when we have a real
+project there can be MANY controllers, and using the modules really helps manage all those files;
+
+Now @1.46 we want to do the same for our other methods;
+
+@1.53.07    I could've sworn he had type in the delete method, but it's gone as we migrate it to app.service.ts...
+I guess I was wrong, we don't need the type to delete something, makes sense if we have the UUID; 
+
+I had put it in to print out `Deleted ${INCOME/EXPENSE} report with id ${UUID}`
+
+@1.53.41 -- discussing why we want to put our logic in the app.service.ts file  -- it's so we can import it later as needed!
+
+he 'accidentally' had his delete function calling itself in the controller: 
+return this.deleteReport(id);
+instead of: 
+return this.appService.deleteReport(id); 
+which is a recursive call and led to stack overflow;
+
+@1.59.30 -- going into validation of incoming properties;
+-------------------------
+Things to validate: 
+validate that the id is a uuid;
+validate that the body is correct; 
+validate that the type is either income | expense;
+
+Why validate the id?  If we don't get a uuid coming in we don't want to waste time/resources 
+going further; 
+Why validate the amount/source? --So users can't input random values or arrays etc; 
+Why validate the type as income/expense? --same reason, so users can't put in random stuff/objects;
+
+the ID__________________________________ 
+incoming requests should look like this: 
+report/income/abfb8b2c-da3c-40d9-bff2-8c63a41a1279
+
+& not like these examples: 
+report/income/abc1234124    or      report/income/banana
+
+How do we do this? 
+In Nest there are some entities to do this; 
+We can use 'Pipes'
+"ParseIntPipe"  to start with; We will add it to the getReportById() method as 
+a parameter with the incoming id like so: 
+@Param('id', ParseIntPipe) id: string
+
+if we pass this request: 
+/report/income/7
+the 'ParseIntPipe' will take a number passed in a request and convert it to a number type;
+
+this is great, and there are other Pipes to parse other types, what we want is to parse for a 
+UUID though; so we need to use a 'ParseUUIDPipe'
+therefore if we pass 
+/report/income/7
+it will fail ('expected uuid' error), if we pass: 
+/report/income/abfb8b2c-da3c-40d9-bff2-8c63a41a1279
+it will work (only returning data if we have that specific uuid in our data set though)
+
+now we are validating the incoming UUIDs! 
+
+
+@2.07.15
+validate the 'type' param__________________________
+So how can we validate the 'type' the comes in with request params; 
+we need to use the enum pipe;
+'ParseEnumPipe'
+
+it's not so easy as just adding it next to all the incoming 'type' params though; 
+we need to instantiate it so we can pass in our enum for it to use as reference of 
+what is allowable; 
+
+@Param('type', new ParseEnumPipe(ReportType))
+
+so we just add that everywhere we take in the @Param('type') 
+
+@2.09.20
+validate the body______________________________________
+since the 'body' has stuff in it (amount, source), we can't just use a Pipe to parse/validate it;
+We need to ensure that the amount is a number, and the source is a string; 
+
+We need to use a 'DTO'   transform and validate the body and outgoing response;
+We need to create this manually--> create new dir in src folder, 
+create file "report.dto.ts"
+
+we need to install some stuff with npm to do all this: class-validator, & class-transformer; 
+
+npm install class-validator class-transformer
+
+what is a DTO ...? 
+
+To validate the stuff we want in the body, we define a class, and export it;
+Then we import it into our controller, like we did with the enum and other stuff;
+
+Then where we used in the CreateReport() method, we replace the stuff we had for body
+//we had: 
+createReport(@Body() 
+{ amount, source }: { amount: number; source: string; }, 
+@Param('type', new ParseEnumPipe(ReportType)) type: string) {
+
+//change to: 
+createReport(@Body() 
+{ amount, source }: CreateReportDto, 
+@Param('type', new ParseEnumPipe(ReportType)) type: string) {
+
+This doesn't do any validation though, just the typing part;
+
+To get the validation in, we need to use some decorators from the 
+class-validator library  which we need to import to our dto file/class
+
+for 'amount' we can try the @IsNumber decorator to ensure that it's a number, 
+but we also need to ensure that it's a positive number as well...
+and there's a decorator for that as well: 
+@IsPositive
+
+We also added the @IsString() and @IsNotEmpty decorators for 
+source: string;
+This should provide validation right? 
+Apparently not, we can create a new report and provide whatever for the source...
+@2.14.26
+
+To do this we need to go to the main.ts file, which is where the whole application 
+is getting booted up; 
+NestFactory generates a new Nest application
+
+we want to tell it to use the global pipes before listening on port 3000;
+
+
+
